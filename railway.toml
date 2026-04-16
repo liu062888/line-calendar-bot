@@ -1,0 +1,8 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "python app.py"
+healthcheckPath = "/callback"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
