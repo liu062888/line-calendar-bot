@@ -67,7 +67,44 @@ def parse_event(text):
 def create_ics_url(event_date, event_name):
     event_id = str(uuid.uuid4())
     event_store[event_id] = (event_date, event_name)
-    return f"{BASE_URL}/event/{event_id}.ics"
+    return f"{BASE_URL}/event/{event_id}"
+
+
+@app.route("/event/<event_id>")
+def event_page(event_id):
+    if event_id not in event_store:
+        abort(404)
+    event_date, event_name = event_store[event_id]
+    date_str = event_date.strftime('%Y年%m月%d日')
+    download_url = f"{BASE_URL}/event/{event_id}.ics"
+    html = f"""<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>加入行事曆</title>
+  <style>
+    body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center;
+            align-items: center; min-height: 100vh; margin: 0; background: #f2f2f7; }}
+    .card {{ background: white; border-radius: 16px; padding: 32px 24px;
+             text-align: center; max-width: 320px; width: 90%; box-shadow: 0 2px 16px rgba(0,0,0,0.1); }}
+    .icon {{ font-size: 48px; margin-bottom: 12px; }}
+    .date {{ color: #666; font-size: 15px; margin-bottom: 6px; }}
+    .title {{ font-size: 22px; font-weight: bold; margin-bottom: 24px; }}
+    .btn {{ display: block; background: #007aff; color: white; text-decoration: none;
+            padding: 14px; border-radius: 12px; font-size: 17px; font-weight: 600; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">📅</div>
+    <div class="date">{date_str}</div>
+    <div class="title">{event_name}</div>
+    <a class="btn" href="{download_url}">加入行事曆</a>
+  </div>
+</body>
+</html>"""
+    return html
 
 
 @app.route("/event/<event_id>.ics")
@@ -80,7 +117,6 @@ def serve_ics(event_id):
     cal = Calendar()
     cal.add('prodid', '-//LINE Calendar Bot//TW//')
     cal.add('version', '2.0')
-    cal.add('method', 'PUBLISH')
 
     event = Event()
     event.add('summary', event_name)
@@ -92,9 +128,9 @@ def serve_ics(event_id):
 
     response = app.response_class(
         response=cal.to_ical(),
-        mimetype='text/calendar; charset=utf-8',
+        mimetype='text/calendar',
     )
-    response.headers['Content-Disposition'] = 'inline; filename="event.ics"'
+    response.headers['Content-Disposition'] = f'attachment; filename="{event_name}.ics"'
     return response
 
 
