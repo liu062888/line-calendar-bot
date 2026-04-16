@@ -3,15 +3,20 @@ import re
 import uuid
 from datetime import date, timedelta
 from flask import Flask, request, abort, send_file
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
-from icalendar import Calendar, Event
 import io
+
+from linebot.v3 import WebhookHandler
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.messaging import (
+    Configuration, ApiClient, MessagingApi,
+    ReplyMessageRequest, TextMessage
+)
+from icalendar import Calendar, Event
 
 app = Flask(__name__)
 
-line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
+configuration = Configuration(access_token=os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
 
 BASE_URL = os.environ.get('BASE_URL', 'http://localhost:5000')
@@ -21,11 +26,6 @@ event_store = {}
 
 
 def parse_event(text):
-    """
-    解析文字中的日期與事件名稱。
-    支援格式：
-      4/15 家教 / 4月15日 補習 / 今天 家教 / 我4/15家教
-    """
     today = date.today()
     current_year = today.year
 
@@ -66,7 +66,6 @@ def parse_event(text):
 
 
 def create_ics_url(event_date, event_name):
-    """產生 .ics 下載連結並暫存事件資料"""
     event_id = str(uuid.uuid4())
     event_store[event_id] = (event_date, event_name)
     return f"{BASE_URL}/event/{event_id}.ics"
@@ -74,7 +73,6 @@ def create_ics_url(event_date, event_name):
 
 @app.route("/event/<event_id>.ics")
 def serve_ics(event_id):
-    """提供 .ics 檔案下載"""
     if event_id not in event_store:
         abort(404)
 
@@ -93,9 +91,8 @@ def serve_ics(event_id):
 
     cal.add_component(event)
 
-    ics_data = cal.to_ical()
     return send_file(
-        io.BytesIO(ics_data),
+        io.BytesIO(cal.to_ical()),
         mimetype='text/calendar',
         as_attachment=True,
         download_name='event.ics'
@@ -113,22 +110,21 @@ def callback():
     return 'OK'
 
 
-@handler.add(MessageEvent, message=TextMessage)
+@handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     text = event.message.text.strip()
-
     event_date, event_name = parse_event(text)
 
     if event_date and event_name:
         ics_url = create_ics_url(event_date, event_name)
         date_str = event_date.strftime('%Y年%m月%d日')
-        reply = (
+        reply_text = (
             f"📅 {date_str}　📝 {event_name}\n\n"
             f"點下方連結加入行事曆：\n"
             f"{ics_url}"
         )
     else:
-        reply = (
+        reply_text = (
             "請用以下格式傳訊息：\n"
             "・4/15 家教\n"
             "・4月15號 補習\n"
@@ -136,10 +132,14 @@ def handle_message(event):
             "・我4/15家教"
         )
 
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply)
-    )
+    with ApiClient(configuration) as api_client:
+        messaging_api = MessagingApi(api_client)
+        messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=reply_text)]
+            )
+        )
 
 
 if __name__ == "__main__":
