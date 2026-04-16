@@ -2,8 +2,7 @@ import os
 import re
 import uuid
 from datetime import date, timedelta
-from flask import Flask, request, abort, send_file
-import io
+from flask import Flask, request, abort
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -91,12 +90,12 @@ def serve_ics(event_id):
 
     cal.add_component(event)
 
-    return send_file(
-        io.BytesIO(cal.to_ical()),
-        mimetype='text/calendar',
-        as_attachment=True,
-        download_name='event.ics'
+    response = app.response_class(
+        response=cal.to_ical(),
+        mimetype='text/calendar; charset=utf-8',
     )
+    response.headers['Content-Disposition'] = 'inline; filename="event.ics"'
+    return response
 
 
 @app.route("/callback", methods=['POST'])
